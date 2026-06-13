@@ -1,0 +1,13 @@
+flask
+flask-cors
+pandas
+numpy
+faiss-cpu==1.12.0
+torch
+transformers
+groq
+python-dotenv
+streamlit
+requests
+sentence-transformers
+gunicorn
