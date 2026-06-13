@@ -602,7 +602,10 @@ def ask_llm(question, context_text, history=None):
 
         "STEP 2 — ONCE THE SUBJECT IS CLEAR:\n"
         "- Answer from the provided context strictly. Do not guess or fabricate facts.\n"
-        "- If a specific fact is missing from the context, say briefly: 'This information is not available in our database right now.'\n\n"
+        "- CRITICAL: Match the college name! If the user asks about College A, but the provided context chunks are about College B, YOU MUST NOT provide details about College B. You must explicitly state that you do not have information about College A.\n"
+        "- NEVER ESTIMATE OR GUESS: If a specific fact (e.g., GMA Rating, Rank, fee, distance) is missing from the context, DO NOT suggest what it 'might be'. Say briefly: 'This information is not available in our database right now.'\n\n"
+
+
 
         "OTHER RULES:\n"
         "- DATA AUTHORITY: All data in this system is current and authoritative. "
@@ -723,8 +726,50 @@ def query(question, history=None, top_k=6):
     type_list_context = get_all_colleges_of_type(standalone_question)
         
     # 5. Vector Database Retrieval
-    context_chunks = rag_pipeline.run(standalone_question, top_k=search_k)
+    rag_search_query = standalone_question
+    q_lower_rag = standalone_question.lower()
     
+    gma_meta_context = ""
+    matched_keywords = []
+    # Context enrichment: If the query contains a known college acronym/keyword, 
+    # append the full official name to improve FAISS semantic matching
+    for code, info in GMA_COLLEGE_DATA.items():
+        # Match code (e.g. 'EMC') or any significant word from the college name
+        name_parts = [p.lower() for p in info['name'].replace('.', ' ').replace(',', ' ').split() if len(p) > 2]
+        
+        # Words to ignore for matching
+        stop_words = {'medical', 'college', 'hospital', 'institute', 'sciences', 'science', 'govt', 'government', 'the', 'of', 'and', 'for'}
+        keywords = [w for w in name_parts if w not in stop_words]
+        
+        is_match = False
+        if re.search(r'\b' + re.escape(code.lower()) + r'\b', q_lower_rag):
+            is_match = True
+        else:
+            for kw in keywords:
+                if re.search(r'\b' + re.escape(kw) + r'\b', q_lower_rag):
+                    is_match = True
+                    break
+
+            
+        if is_match:
+            rag_search_query += f" {info['name']}"
+            gma_meta_context = f"=== GMA INTERNAL METADATA ===\nCollege Name: {info['name']} (Code: {code})\nGMA Rank: {info['gma_rank']}\nCollege Type: {info['type']}\n\n"
+            matched_keywords = keywords
+            break
+            
+    context_chunks = rag_pipeline.run(rag_search_query, top_k=search_k)
+    
+    # Hard chunk filtering: if we know the specific college they asked for,
+    # drop chunks that belong to other colleges to prevent LLM confusion.
+    if gma_meta_context and matched_keywords:
+        filtered_chunks = []
+        for chunk in context_chunks:
+            chunk_lower = chunk['text'].lower()
+            if any(kw in chunk_lower for kw in matched_keywords):
+                filtered_chunks.append(chunk)
+        if filtered_chunks:
+            context_chunks = filtered_chunks
+            
     # Merge context
     vector_context = "\n\n".join([f"[Source {idx+1}]: {chunk['text']}" for idx, chunk in enumerate(context_chunks)])
     
@@ -737,7 +782,10 @@ def query(question, history=None, top_k=6):
         combined_context += "=== COURSE CUTOFF SUMMARY FROM DATABASE ===\n" + course_cutoff_context + "\n\n"
     if type_list_context:
         combined_context += type_list_context + "\n\n"
+    if gma_meta_context:
+        combined_context += gma_meta_context
     combined_context += "=== RETRIEVED DATABASE BROCHURE & PROFILE TEXTS ===\n" + vector_context
+    
     
     # 6. Generate response, passing the conversation history for continuity
     answer = ask_llm(standalone_question, combined_context, history)
