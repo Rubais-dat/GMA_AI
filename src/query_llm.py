@@ -555,15 +555,17 @@ def rephrase_question(question, history):
         history_text += f"{role}: {msg['content']}\n"
         
     rephrase_prompt = (
-        "You are an AI assistant. Given the following conversation history between a student and a college admissions counselor, "
-        "and a follow-up question from the student, rephrase the follow-up question to be a standalone, complete question "
-        "that includes all necessary details (such as the specific college name, course, rank, category, or fees being referred to).\n"
-        "Do NOT answer the question. Just output the rephrased question itself. If the question is already standalone or "
-        "does not refer to previous context, output it exactly as is.\n\n"
+        "You are an AI assistant helping to process queries for Kerala medical college admissions.\n"
+        "Given the conversation history and a follow-up question, rephrase the follow-up question to be a standalone question.\n"
+        "CRITICAL RULES:\n"
+        "1. Do NOT answer the question. Only output the rephrased question.\n"
+        "2. Do NOT invent any new names, colleges, universities, or locations. Stick strictly to Kerala MBBS/BDS context.\n"
+        "3. If the question is already standalone or you are unsure, just output the exact original question without changing it.\n\n"
         f"Conversation History:\n{history_text}\n"
         f"Follow-up Question: {question}\n"
         "Standalone Question:"
     )
+
     
     try:
         completion = client.chat.completions.create(
