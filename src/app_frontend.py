@@ -378,7 +378,7 @@ if prompt := st.chat_input("Ask about cutoffs, fees, seats, college rankings, or
                 for m in st.session_state.messages[:-1]
             ]
             response = requests.post(
-                "https://paralyses-remission-tile.ngrok-free.dev/query",
+                "https://gmaai-production.up.railway.app/query",
                 json={"question": prompt, "history": history},
                 timeout=60
             )
